@@ -1,0 +1,223 @@
+<?php
+declare(strict_types=1);
+
+use Phalcon\Security\JWT\Builder;
+use Phalcon\Security\JWT\Signer\Hmac;
+use Phalcon\Security\JWT\Token\Parser;
+use Phalcon\Security\JWT\Validator;
+
+class ApiController extends \Phalcon\Mvc\Controller
+{
+/**
+ * mysql procedures
+*/
+    public function indexAction()
+    {
+
+    }
+    public function getArtigosAllAction(){
+
+        $this->view->disable();
+
+        $rawBody = $this->request->getJsonRawBody();
+
+        if(!$rawBody || !isset($rawBody[0])) return "Sem idMR ou referencia!";
+
+        $id_marca = $rawBody[0]->idMR;
+        $ref = $rawBody[0]->referencia;
+
+        $token = $this->request->getHeader('Authorization');
+
+        $valid = $this->validate($token);
+
+        if(!$valid) die("Auth failed");
+
+        $result = $this->getArtigosByPart($id_marca, $ref);
+
+        return json_encode($result);
+    }
+
+    public function getEquivalenciasAllAction(){
+
+        $this->view->disable();
+
+        $rawBody = $this->request->getJsonRawBody();
+
+        if(!$rawBody || !isset($rawBody[0])) return "Sem idMR ou referencia!";
+
+        $id_marca = $rawBody[0]->idMR;
+        $ref = $rawBody[0]->referencia;
+
+        $token = $this->request->getHeader('Authorization');
+
+        $valid = $this->validate($token);
+
+        if(!$valid) die("Auth failed");
+
+        $result = $this->getEquivalenciasByPart($id_marca, $ref);
+
+        return json_encode($result);
+    }
+
+    public function getStockAllAction()
+    {
+
+        $this->view->disable();
+
+        $rawBody = $this->request->getJsonRawBody();
+
+        if (!$rawBody || !isset($rawBody[0])) return "Sem idMR ou referencia!";
+
+        $id_marca = $rawBody[0]->idMR;
+        $ref = $rawBody[0]->referencia;
+
+        $token = $this->request->getHeader('Authorization');
+
+        $valid = $this->validate($token);
+
+        if (!$valid) die("Auth failed");
+
+        $result = $this->getStockByPart($id_marca, $ref);
+
+        return json_encode($result);
+    }
+
+    public function getAllByPartAction()
+    {
+
+        $this->view->disable();
+
+        $json = "";
+
+        $rawBody = $this->request->getJsonRawBody();
+
+        if (!$rawBody || !isset($rawBody[0])) return "Sem idMR ou referencia!";
+
+        //validate basic auth
+        $token = $this->request->getHeaders()['Authorization'];
+
+        $valid = $this->validate($token);
+
+        if (!$valid) die("Auth failed");
+
+        //find one or many parts
+        $json = $this->getParsedJson($rawBody);
+
+        return json_encode($json);
+    }
+    public function getParsedJson($rawBody){
+
+        $result = array();
+
+        foreach($rawBody as $r){
+
+            $id_marca = $r->idMR;
+            $ref = $r->referencia;
+            $n_cliente = isset($r->n_cliente) ? $r->n_cliente : null;
+
+            $artigos = $this->getArtigosByPart($id_marca, $ref, $n_cliente);
+            $counter = 0;
+
+            if($artigos){
+                foreach($artigos as $artigo){
+
+                    $data = array();
+
+
+
+                    $id_marca = $artigo['id_marca'];
+                    $ref = $artigo['ref'];
+
+                    $firstIndex = "artigo";
+                    $secondIndex = "referenciasRelacionadas";
+                    $thirdIndex = "stock";
+
+                    $data[$firstIndex] = $artigo;
+                    $equivalencias = $this->getEquivalenciasByPart($id_marca, $ref);
+                    if($equivalencias){
+                        foreach($equivalencias as $equivalencia){
+                            $data[$firstIndex][$secondIndex][] = $equivalencia;
+                        }
+                    }
+                    $stocks = $this->getStockByPart($id_marca, $ref);
+                    if($stocks){
+                        foreach($stocks as $stock){
+                            $data[$firstIndex][$thirdIndex][] = $stock;
+                        }
+                    }
+
+                    $result['parts'][] = $data;
+
+                    $counter++;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    public function validate($token){
+
+        $tokenServer = $this->getTokenBasicAuth();
+        
+        return $token == $tokenServer;
+    }
+
+    public function getTokenBasicAuth(){
+
+        $username = "api_root";
+        $password = "123456sofrapa2022x";
+
+        return "Basic ".base64_encode("$username:$password");
+
+    }
+
+    public function getArtigosByPart($id_marca, $ref, $n_cliente = ""){
+
+        $sql = "CALL get_articles_details()";
+
+        $query = $this->db->query($sql);
+        $query->setFetchMode(\Phalcon\Db\Enum::FETCH_ASSOC);
+        $result = $query->fetchAll();
+
+        $count = $query->numRows();
+
+        if($count < 1) return null;
+
+        return $result;
+    }
+
+    public function getEquivalenciasByPart($id_marca, $ref){
+
+        $sql = "CALL getEquivalenciasAll('$id_marca','$ref')";
+
+        $query = $this->db->query($sql);
+        $query->setFetchMode(\Phalcon\Db\Enum::FETCH_ASSOC);
+        $result = $query->fetchAll();
+
+        $count = $query->numRows();
+
+        if($count < 1) return null;
+
+        return $result;
+    }
+
+    public function getStockByPart($id_marca, $ref){
+
+        $sql = "CALL getStockAll('$id_marca','$ref')";
+
+        $query = $this->db->query($sql);
+        $query->setFetchMode(\Phalcon\Db\Enum::FETCH_ASSOC);
+        $result = $query->fetchAll();
+
+        $count = $query->numRows();
+
+        if($count < 1) return null;
+
+        return $result;
+    }
+
+
+
+}
+
